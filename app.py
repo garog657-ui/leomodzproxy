@@ -4878,8 +4878,7 @@ def dashboard():
 
 @app.route('/ai')
 def ai_page():
-    return render_template_string(AI_PAGE)
-
+    return Response(AI_PAGE, mimetype='text/html')
 
 @app.route('/unlock', methods=['POST'])
 def unlock():
