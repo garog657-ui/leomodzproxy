@@ -4514,6 +4514,15 @@ def verify_key():
         'expires': expiry_date.isoformat()
     })
 
+@app.route('/kstat', methods=['GET', 'POST'])
+def handle_kstat():
+    # Этот эндпоинт нужен приложению для проверки статуса после входа
+    return jsonify({
+        "success": True,
+        "status": "ok",
+        "message": "Connection successful"
+    }), 200
+
 
 @app.route('/ver.php', methods=['GET'])
 @app.route('/live/ver.php', methods=['GET'])
