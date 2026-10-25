@@ -4488,19 +4488,32 @@ def verify_key():
     client_ip = get_client_ip()
     if tg_is_ip_banned(client_ip):
         return jsonify({'success': False, 'message': 'IP BANNED'}), 403
+        
     data = request.get_json(silent=True) or {}
     key = normalize_key(data.get('key', ''))
-    if client_ip in registered_ips:
-        session['unlocked'] = True
-        return jsonify({'success': True, 'message': 'JÁ REGISTRADO'})
+    
+    # 1. СНАЧАЛА проверяем, существует ли такой ключ в базе!
     if key not in generated_keys:
         if not user_configs and not generated_keys:
             load_data()
     if key not in generated_keys:
         return jsonify({'success': False, 'message': 'KEY INVÁLIDA'}), 401
+        
     key_data = generated_keys[key]
+    
+    # 2. Если IP уже зарегистрирован, проверяем, СОВПАДАЕТ ли ключ
+    if client_ip in registered_ips:
+        if registered_ips[client_ip] == key:
+            session['unlocked'] = True
+            return jsonify({'success': True, 'message': 'JÁ REGISTRADO', 'token': 'tigran_verified'})
+        else:
+            return jsonify({'success': False, 'message': 'ESTE IP JÁ ESTÁ REGISTRADO COM OUTRA KEY'}), 401
+            
+    # 3. Проверяем лимит использований
     if len(key_data['used_ips']) >= key_data['limit']:
         return jsonify({'success': False, 'message': 'LIMITE ATINGIDO'}), 401
+        
+    # 4. Регистрируем IP
     registered_ips[client_ip] = key
     key_data['used_ips'].append(client_ip)
     expiry_date = datetime.now() + timedelta(days=key_data['days'])
@@ -4508,18 +4521,26 @@ def verify_key():
     session['unlocked'] = True
     update_user_profile(client_ip)
     save_data()
-    tg_notify_login_all(client_ip, key, expiry_date)
+    
+    # Оборачиваем в try-except, чтобы если Telegram тормозит, ключ всё равно выдался
+    try:
+        tg_notify_login_all(client_ip, key, expiry_date)
+    except Exception as e:
+        print(f"Ошибка Telegram: {e}")
+        
     return jsonify({
-        'success': True, 'message': 'OK',
+        'success': True, 
+        'message': 'OK',
+        'token': 'tigran_verified',
         'expires': expiry_date.isoformat()
     })
 
 @app.route('/kstat', methods=['GET', 'POST'])
 def handle_kstat():
-    # Этот эндпоинт нужен приложению для проверки статуса после входа
     return jsonify({
         "success": True,
         "status": "ok",
+        "token": "tigran_verified", # <--- ДОБАВИЛИ ЭТО
         "message": "Connection successful"
     }), 200
 
