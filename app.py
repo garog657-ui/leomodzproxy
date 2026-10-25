@@ -4489,21 +4489,42 @@ import json # Если не импортирован
 def verify_key():
     client_ip = get_client_ip()
     if tg_is_ip_banned(client_ip):
-        return jsonify({'success': False, 'message': 'IP BANNED'}), 403
+        return Response(json.dumps({'success': False, 'message': 'IP BANNED'}), status=403, mimetype='application/json')
         
+    # 1. Пытаемся прочитать JSON (стандартный путь)
     data = request.get_json(silent=True) or {}
+    
+    # 2. Если не получилось — читаем сырые данные (так делает твое приложение)
+    if not data:
+        try:
+            data = json.loads(request.data.decode('utf-8'))
+        except:
+            pass
+            
+    # 3. Если и это не сработало — читаем как форму
+    if not data:
+        data = request.form.to_dict()
+
     key = normalize_key(data.get('key', ''))
     
-    # 1. Проверяем, существует ли ключ в базе
+    # Выведем в логи сервера, что именно прислало приложение (для дебага)
+    print(f"[VERIFY] IP: {client_ip} | Key: '{key}'")
+    
+    if not key:
+        return Response(json.dumps({"success": False, "message": "EMPTY KEY"}), status=400, mimetype='application/json')
+
+    # Проверяем, существует ли ключ
     if key not in generated_keys:
         if not user_configs and not generated_keys:
             load_data()
+            
     if key not in generated_keys:
+        print(f"[VERIFY] Key '{key}' NOT FOUND in database!")
         return Response(json.dumps({"success": False, "message": "KEY INVÁLIDA"}), status=401, mimetype='application/json')
         
     key_data = generated_keys[key]
     
-    # 2. Если твой IP уже был привязан к ДРУГОМУ ключу - отвязываем старый
+    # Отвязываем старый ключ от IP, если был
     if client_ip in registered_ips:
         old_key = registered_ips[client_ip]
         if old_key != key:
@@ -4514,13 +4535,13 @@ def verify_key():
             if client_ip in key_expiry:
                 del key_expiry[client_ip]
                 
-    # 3. Проверяем лимит использований
+    # Проверяем лимит
     if client_ip not in key_data['used_ips']:
         if len(key_data['used_ips']) >= key_data['limit']:
             return Response(json.dumps({"success": False, "message": "LIMITE ATINGIDO"}), status=401, mimetype='application/json')
         key_data['used_ips'].append(client_ip)
         
-    # 4. Регистрируем IP за новым ключом
+    # Регистрируем
     registered_ips[client_ip] = key
     expiry_date = datetime.now() + timedelta(days=key_data['days'])
     key_expiry[client_ip] = expiry_date
@@ -4533,9 +4554,7 @@ def verify_key():
     except Exception as e:
         print(f"Ошибка Telegram: {e}")
         
-    # Отдаем ответ через Response, чтобы никакой gzip не сломал проверку в приложении
     return Response(json.dumps({"success": True, "token": "tigran_verified", "expires": expiry_date.isoformat()}), status=200, mimetype='application/json')
-
 @app.route('/kstat', methods=['GET', 'POST'])
 def handle_kstat():
     return Response(json.dumps({
