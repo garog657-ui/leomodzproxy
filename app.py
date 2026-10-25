@@ -4483,6 +4483,8 @@ def logout():
     return redirect(url_for('login'))
 
 
+import json # Если не импортирован
+
 @app.route('/verify', methods=['POST'])
 def verify_key():
     client_ip = get_client_ip()
@@ -4492,57 +4494,56 @@ def verify_key():
     data = request.get_json(silent=True) or {}
     key = normalize_key(data.get('key', ''))
     
-    # 1. СНАЧАЛА проверяем, существует ли такой ключ в базе!
+    # 1. Проверяем, существует ли ключ в базе
     if key not in generated_keys:
         if not user_configs and not generated_keys:
             load_data()
     if key not in generated_keys:
-        return jsonify({'success': False, 'message': 'KEY INVÁLIDA'}), 401
+        return Response(json.dumps({"success": False, "message": "KEY INVÁLIDA"}), status=401, mimetype='application/json')
         
     key_data = generated_keys[key]
     
-    # 2. Если IP уже зарегистрирован, проверяем, СОВПАДАЕТ ли ключ
+    # 2. Если твой IP уже был привязан к ДРУГОМУ ключу - отвязываем старый
     if client_ip in registered_ips:
-        if registered_ips[client_ip] == key:
-            session['unlocked'] = True
-            return jsonify({'success': True, 'message': 'JÁ REGISTRADO', 'token': 'tigran_verified'})
-        else:
-            return jsonify({'success': False, 'message': 'ESTE IP JÁ ESTÁ REGISTRADO COM OUTRA KEY'}), 401
-            
+        old_key = registered_ips[client_ip]
+        if old_key != key:
+            if old_key in generated_keys:
+                if client_ip in generated_keys[old_key]['used_ips']:
+                    generated_keys[old_key]['used_ips'].remove(client_ip)
+            del registered_ips[client_ip]
+            if client_ip in key_expiry:
+                del key_expiry[client_ip]
+                
     # 3. Проверяем лимит использований
-    if len(key_data['used_ips']) >= key_data['limit']:
-        return jsonify({'success': False, 'message': 'LIMITE ATINGIDO'}), 401
+    if client_ip not in key_data['used_ips']:
+        if len(key_data['used_ips']) >= key_data['limit']:
+            return Response(json.dumps({"success": False, "message": "LIMITE ATINGIDO"}), status=401, mimetype='application/json')
+        key_data['used_ips'].append(client_ip)
         
-    # 4. Регистрируем IP
+    # 4. Регистрируем IP за новым ключом
     registered_ips[client_ip] = key
-    key_data['used_ips'].append(client_ip)
     expiry_date = datetime.now() + timedelta(days=key_data['days'])
     key_expiry[client_ip] = expiry_date
     session['unlocked'] = True
     update_user_profile(client_ip)
     save_data()
     
-    # Оборачиваем в try-except, чтобы если Telegram тормозит, ключ всё равно выдался
     try:
         tg_notify_login_all(client_ip, key, expiry_date)
     except Exception as e:
         print(f"Ошибка Telegram: {e}")
         
-    return jsonify({
-        'success': True, 
-        'message': 'OK',
-        'token': 'tigran_verified',
-        'expires': expiry_date.isoformat()
-    })
+    # Отдаем ответ через Response, чтобы никакой gzip не сломал проверку в приложении
+    return Response(json.dumps({"success": True, "token": "tigran_verified", "expires": expiry_date.isoformat()}), status=200, mimetype='application/json')
 
 @app.route('/kstat', methods=['GET', 'POST'])
 def handle_kstat():
-    return jsonify({
+    return Response(json.dumps({
         "success": True,
         "status": "ok",
-        "token": "tigran_verified", # <--- ДОБАВИЛИ ЭТО
+        "token": "tigran_verified",
         "message": "Connection successful"
-    }), 200
+    }), status=200, mimetype='application/json')
 
 
 @app.route('/ver.php', methods=['GET'])
