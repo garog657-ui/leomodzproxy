@@ -4285,30 +4285,40 @@ def verify_key():
     client_ip = get_client_ip()
     if tg_is_ip_banned(client_ip):
         return jsonify({'success': False, 'message': 'IP BANNED'}), 403
-    data = request.get_json(silent=True) or {}
-    key = normalize_key(data.get('key', ''))
+
+    # Чит из C++ присылает данные в формате формы, а не JSON
+    if request.form and 'user_key' in request.form:
+        key = normalize_key(request.form.get('user_key', ''))
+        hwid = request.form.get('serial', 'unknown_hwid') # Чит присылает HWID
+    else:
+        data = request.get_json(silent=True) or {}
+        key = normalize_key(data.get('key', ''))
+        hwid = "web_user"
+
     if client_ip in registered_ips:
-        session['unlocked'] = True
-        return jsonify({'success': True, 'message': 'JÁ REGISTRADO'})
+        return jsonify({'status': True, 'reason': 'Already registered'})
+
     if key not in generated_keys:
-        if not user_configs and not generated_keys:
-            load_data()
-    if key not in generated_keys:
-        return jsonify({'success': False, 'message': 'KEY INVÁLIDA'}), 401
+        return jsonify({'status': False, 'reason': 'Key invalid'})
+
     key_data = generated_keys[key]
     if len(key_data['used_ips']) >= key_data['limit']:
-        return jsonify({'success': False, 'message': 'LIMITE ATINGIDO'}), 401
+        return jsonify({'status': False, 'reason': 'Limit reached'})
+
+    # Привязываем ключ (можно к IP, можно к HWID)
     registered_ips[client_ip] = key
     key_data['used_ips'].append(client_ip)
     expiry_date = datetime.now() + timedelta(days=key_data['days'])
     key_expiry[client_ip] = expiry_date
-    session['unlocked'] = True
+    
     update_user_profile(client_ip)
     save_data()
     tg_notify_login_all(client_ip, key, expiry_date)
+    
+    # ВАЖНО: Отвечаем в формате, который ждет C++ код (status, reason)
     return jsonify({
-        'success': True, 'message': 'OK',
-        'expires': expiry_date.isoformat()
+        'status': True, 
+        'reason': 'Login Success'
     })
 
 
