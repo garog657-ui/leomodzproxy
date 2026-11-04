@@ -4315,29 +4315,39 @@ def verify_key():
     client_ip = get_client_ip()
     if tg_is_ip_banned(client_ip):
         return jsonify({'success': False, 'message': 'IP BANNED'}), 403
+    
     data = request.get_json(silent=True) or {}
     key = normalize_key(data.get('key', ''))
-    if client_ip in registered_ips:
-        session['unlocked'] = True
-        return jsonify({'success': True, 'message': 'JÁ REGISTRADO'})
-    if key not in generated_keys:
-        if not user_configs and not generated_keys:
-            load_data()
+    
+    # Если база пустая (после перезапуска), подгружаем её
+    if not user_configs and not generated_keys:
+        load_data()
+        
+    # Проверяем, существует ли такой ключ
     if key not in generated_keys:
         return jsonify({'success': False, 'message': 'KEY INVÁLIDA'}), 401
+        
     key_data = generated_keys[key]
+    
+    # Проверяем лимит IP
     if len(key_data['used_ips']) >= key_data['limit']:
         return jsonify({'success': False, 'message': 'LIMITE ATINGIDO'}), 401
+        
+    # Если всё ок - пускаем
     registered_ips[client_ip] = key
     key_data['used_ips'].append(client_ip)
+    
     expiry_date = datetime.now() + timedelta(days=key_data['days'])
     key_expiry[client_ip] = expiry_date
     session['unlocked'] = True
+    
     update_user_profile(client_ip)
     save_data()
     tg_notify_login_all(client_ip, key, expiry_date)
+    
     return jsonify({
-        'success': True, 'message': 'OK',
+        'success': True, 
+        'message': 'OK',
         'expires': expiry_date.isoformat()
     })
 
