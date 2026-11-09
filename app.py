@@ -5398,6 +5398,32 @@ if TELEGRAM_BOT_TOKEN:
     threading.Thread(target=tg_achievements_checker, daemon=True).start()
 
 
+
+@app.route("/mods")
+def route_mods():
+    from flask import send_from_directory
+    return send_from_directory("static/pages", "mods.html")
+
+@app.route("/panel")
+def route_panel():
+    from flask import send_from_directory
+    return send_from_directory("static/pages", "panel.html")
+
+@app.route("/playstore")
+def route_playstore():
+    from flask import send_from_directory
+    return send_from_directory("static/pages", "playstore.html")
+
+@app.route("/getkey")
+def route_getkey():
+    from flask import send_from_directory
+    return send_from_directory("static/pages", "getkey.html")
+
+@app.route("/admin_keys")
+def route_admin_keys():
+    from flask import send_from_directory
+    return send_from_directory("static/pages", "admin_keys.html")
+
 if __name__ == "__main__":
     if not user_configs and not generated_keys:
         load_data()
