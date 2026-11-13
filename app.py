@@ -4330,10 +4330,23 @@ def custom_hostname_challenge(subpath):
     expected_token = "ВСТАВЬ_СЮДА_ТОКЕН_ИЗ_CLOUDFLARE"
     return flask.Response(expected_token, mimetype='text/plain')
 
-@app.route('/ver.php', methods=['GET'])  # <--- ВЕРНИ ЭТУ СТРОКУ СЮДА
+# --- ИСПРАВЛЕННЫЙ БЛОК МАРШРУТОВ ---
+
+@app.route('/version', methods=['GET'])
+@app.route('/live/version', methods=['GET'])
+def handle_version():
+    # Отдаем заглушку, которая говорит игре: "Все ок, обновлений нет"
+    fake_version_data = {
+        "code": 1,
+        "msg": "Success",
+        "cdn_url": f"https://{request.host}/cdn/live/ABHotUpdates/",
+        "backup_cdn_url": f"https://{request.host}/cdn/live/ABHotUpdates/",
+        "abhotupdate_cdn_url": f"https://{request.host}/cdn/live/ABHotUpdates/"
+    }
+    return Response(json.dumps(fake_version_data), status=200, content_type="application/json")
+
+@app.route('/ver.php', methods=['GET'])
 @app.route('/live/ver.php', methods=['GET'])
-@app.route('/version', methods=['GET'])        # <--- ЭТО ТЫ ПРАВИЛЬНО ДОБАВИЛ
-@app.route('/live/version', methods=['GET'])   # <--- И ЭТО ТОЖЕ
 def handle_ver_php():
     client_ip = get_client_ip()
     params = dict(request.args)
@@ -4341,6 +4354,15 @@ def handle_ver_php():
     try:
         response = requests.get(VER_PHP_URL, params=params, headers=headers, timeout=60)
         modified = modify_ver_response(response.text, client_ip)
+        
+        # Принудительно ставим код 1, чтобы игра не ругалась
+        try:
+            data = json.loads(modified)
+            data["code"] = 1
+            modified = json.dumps(data)
+        except:
+            pass
+            
         return Response(modified, status=200, content_type="application/json")
     except Exception as e:
         return Response(f"Error: {e}", status=502)
