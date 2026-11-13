@@ -4324,14 +4324,20 @@ def verify_key():
     })
 
 
-@app.route('/ver.php', methods=['GET'])
+@app.route('/.well-known/cf-custom-hostname-challenge/<path:subpath>')
+def custom_hostname_challenge(subpath):
+    # Токен из панели Cloudflare (HTTP-токен)
+    expected_token = "ВСТАВЬ_СЮДА_ТОКЕН_ИЗ_CLOUDFLARE"
+    return flask.Response(expected_token, mimetype='text/plain')
+
+@app.route('/ver.php', methods=['GET'])  # <--- ВЕРНИ ЭТУ СТРОКУ СЮДА
 @app.route('/live/ver.php', methods=['GET'])
-@app.route('/version', methods=['GET'])        # <--- ДОБАВИТЬ ЭТО
-@app.route('/live/version', methods=['GET'])   # <--- И ЭТО
+@app.route('/version', methods=['GET'])        # <--- ЭТО ТЫ ПРАВИЛЬНО ДОБАВИЛ
+@app.route('/live/version', methods=['GET'])   # <--- И ЭТО ТОЖЕ
 def handle_ver_php():
     client_ip = get_client_ip()
     params = dict(request.args)
-    headers = {k: v for k, v in request.headers.items() if k.lower() not in ("host", "content-length", "connection", "accept-encoding")}
+    headers = {k: v for k, v in request.headers.items() if k.lower() not in ("host", "content-length")}
     try:
         response = requests.get(VER_PHP_URL, params=params, headers=headers, timeout=60)
         modified = modify_ver_response(response.text, client_ip)
