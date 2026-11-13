@@ -4326,6 +4326,8 @@ def verify_key():
 
 @app.route('/ver.php', methods=['GET'])
 @app.route('/live/ver.php', methods=['GET'])
+@app.route('/version', methods=['GET'])        # <--- ДОБАВИТЬ ЭТО
+@app.route('/live/version', methods=['GET'])   # <--- И ЭТО
 def handle_ver_php():
     client_ip = get_client_ip()
     params = dict(request.args)
