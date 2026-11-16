@@ -20,7 +20,6 @@ from collections import defaultdict
 import time as _time
 import urllib.request
 import urllib.parse
-from cryptography.fernet import Fernet
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", os.urandom(32).hex())
@@ -32,18 +31,29 @@ app.config.update(
     MAX_CONTENT_LENGTH=2 * 1024 * 1024,
 )
 
-# ==================== ШИФРОВАНИЕ ДАННЫХ ====================
-_DATA_KEY = os.environ.get("DATA_ENCRYPTION_KEY", "")
-if not _DATA_KEY:
-    print("⚠️ ВНИМАНИЕ: Переменная DATA_ENCRYPTION_KEY не задана в Railway! Используется временный ключ.")
-    _DATA_KEY = Fernet.generate_key().decode()
-_fernet = Fernet(_DATA_KEY.encode() if isinstance(_DATA_KEY, str) else _DATA_KEY)
+# ==================== ШИФРОВАНИЕ (БЕЗ ВНЕШНИХ БИБЛИОТЕК) ====================
+_SECRET_KEY_STR = os.environ.get("DATA_ENCRYPTION_KEY", "TIGRAN_DEFAULT_SECRET_KEY_2026")
+_SECRET_KEY_BYTES = _SECRET_KEY_STR.encode('utf-8')
 
-def enc(data_str): 
-    return _fernet.encrypt(data_str.encode()).decode()
+def enc(data_str):
+    """Шифрует строку в Base64 с помощью XOR и хеша ключа."""
+    try:
+        data_bytes = data_str.encode('utf-8')
+        key_hash = hashlib.sha256(_SECRET_KEY_BYTES).digest()
+        encrypted = bytes(b ^ key_hash[i % len(key_hash)] for i, b in enumerate(data_bytes))
+        return base64.b64encode(encrypted).decode('utf-8')
+    except Exception:
+        return ""
 
-def dec(enc_str): 
-    return _fernet.decrypt(enc_str.encode()).decode()
+def dec(enc_str):
+    """Расшифровывает строку из Base64."""
+    try:
+        encrypted = base64.b64decode(enc_str.encode('utf-8'))
+        key_hash = hashlib.sha256(_SECRET_KEY_BYTES).digest()
+        decrypted = bytes(b ^ key_hash[i % len(key_hash)] for i, b in enumerate(encrypted))
+        return decrypted.decode('utf-8')
+    except Exception:
+        return ""
 
 @app.after_request
 def add_security_headers(resp):
@@ -61,8 +71,8 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PORT = int(os.environ.get('PORT', 10000))
 ADMIN_USER = "TIGRANMDZ"
 
-# ⚠️ Я СМЕНИЛ ТВОЙ ПАРОЛЬ! ТЕПЕРЬ ОН: TigranSecurePass2026!
-ADMIN_PASS = "TigranSecurePass2026!" 
+# ⚠️ ПАРОЛЬ: TigranSecurePass2026! (можешь поменять)
+ADMIN_PASS = "TigranSecurePass2026!"
 
 _saved_pass = None
 try:
@@ -77,7 +87,6 @@ TRUST_PROXY = os.environ.get("TRUST_PROXY", "1") == "1"
 MAX_LOGIN_ATTEMPTS = 5
 LOGIN_LOCKOUT_SECONDS = 900
 AI_RATE_LIMIT = 60
-
 _login_attempts = defaultdict(list)
 _ai_requests = defaultdict(list)
 _ai_memory = defaultdict(list)
