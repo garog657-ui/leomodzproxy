@@ -4294,6 +4294,9 @@ def verify_key():
 
     data = request.get_json(silent=True) or {}
     key = normalize_key(data.get('key', ''))
+    
+    # --- ДОБАВЛЕНО: Получаем уникальный ID телефона от клиента ---
+    hwid = data.get('serial', 'unknown')
 
     if not user_configs and not generated_keys:
         load_data()
@@ -4302,6 +4305,16 @@ def verify_key():
         return jsonify({'success': False, 'message': 'KEY INVÁLIDA'}), 401
 
     key_data = generated_keys[key]
+
+    # --- ДОБАВЛЕНО: Проверка привязки к железу (Анти-кража) ---
+    # Если ключ уже привязан к какому-то телефону, а зашел другой — отказ.
+    if 'bound_hwid' in key_data and key_data['bound_hwid'] != hwid:
+        return jsonify({'success': False, 'message': 'ОШИБКА: МОД УКРАДЕН! ДРУГОЕ УСТРОЙСТВО.'}), 403
+    
+    # Если ключ новый и еще не привязан — привязываем к этому телефону
+    if 'bound_hwid' not in key_data:
+        key_data['bound_hwid'] = hwid
+    # -------------------------------------------------------------
 
     if len(key_data['used_ips']) >= key_data['limit']:
         return jsonify({'success': False, 'message': 'LIMITE ATINGIDO'}), 401
