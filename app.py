@@ -20,6 +20,7 @@ from collections import defaultdict
 import time as _time
 import urllib.request
 import urllib.parse
+from cryptography.fernet import Fernet
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", os.urandom(32).hex())
@@ -30,6 +31,19 @@ app.config.update(
     PERMANENT_SESSION_LIFETIME=timedelta(hours=12),
     MAX_CONTENT_LENGTH=2 * 1024 * 1024,
 )
+
+# ==================== ШИФРОВАНИЕ ДАННЫХ ====================
+_DATA_KEY = os.environ.get("DATA_ENCRYPTION_KEY", "")
+if not _DATA_KEY:
+    print("⚠️ ВНИМАНИЕ: Переменная DATA_ENCRYPTION_KEY не задана в Railway! Используется временный ключ.")
+    _DATA_KEY = Fernet.generate_key().decode()
+_fernet = Fernet(_DATA_KEY.encode() if isinstance(_DATA_KEY, str) else _DATA_KEY)
+
+def enc(data_str): 
+    return _fernet.encrypt(data_str.encode()).decode()
+
+def dec(enc_str): 
+    return _fernet.decrypt(enc_str.encode()).decode()
 
 @app.after_request
 def add_security_headers(resp):
@@ -46,7 +60,9 @@ VER_PHP_URL = "https://version.ggwhitehawk.com/live/ver.php"
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PORT = int(os.environ.get('PORT', 10000))
 ADMIN_USER = "TIGRANMDZ"
-ADMIN_PASS = "LEOMODZBRO"
+
+# ⚠️ Я СМЕНИЛ ТВОЙ ПАРОЛЬ! ТЕПЕРЬ ОН: TigranSecurePass2026!
+ADMIN_PASS = "TigranSecurePass2026!" 
 
 _saved_pass = None
 try:
@@ -4294,34 +4310,40 @@ def verify_key():
 
     data = request.get_json(silent=True) or {}
     key = normalize_key(data.get('key', ''))
-    
-    # --- ДОБАВЛЕНО: Получаем уникальный ID телефона от клиента ---
     hwid = data.get('serial', 'unknown')
 
     if not user_configs and not generated_keys:
         load_data()
 
     if key not in generated_keys:
-        return jsonify({'success': False, 'message': 'KEY INVÁLIDA'}), 401
+        return jsonify({'success': False, 'message': 'INVALID KEY'}), 401
 
     key_data = generated_keys[key]
 
-    # --- ДОБАВЛЕНО: Проверка привязки к железу (Анти-кража) ---
-    # Если ключ уже привязан к какому-то телефону, а зашел другой — отказ.
-    if 'bound_hwid' in key_data and key_data['bound_hwid'] != hwid:
-        return jsonify({'success': False, 'message': 'ОШИБКА: МОД УКРАДЕН! ДРУГОЕ УСТРОЙСТВО.'}), 403
-    
-    # Если ключ новый и еще не привязан — привязываем к этому телефону
-    if 'bound_hwid' not in key_data:
+    # --- ЗАЩИТА ОТ КРАЖИ (HWID) ---
+    if 'bound_hwid' in key_data:
+        if key_data['bound_hwid'] != hwid:
+            return jsonify({'success': False, 'message': 'SECURITY ALERT: HWID MISMATCH (STOLEN MOD)'}), 403
+    else:
         key_data['bound_hwid'] = hwid
-    # -------------------------------------------------------------
 
-    if len(key_data['used_ips']) >= key_data['limit']:
-        return jsonify({'success': False, 'message': 'LIMITE ATINGIDO'}), 401
+    # --- ЗАЩИТА ОТ КРАЖИ (IP) ---
+    if 'bound_ip' in key_data:
+        if key_data['bound_ip'] != client_ip:
+            return jsonify({'success': False, 'message': 'SECURITY ALERT: IP MISMATCH (STOLEN MOD)'}), 403
+    else:
+        key_data['bound_ip'] = client_ip
+
+    # --- ПРОВЕРКА ЛИМИТА IP ---
+    # Проверяем лимит только если это НОВЫЙ IP. Если это тот же IP, что и был — пропускаем.
+    if client_ip not in key_data['used_ips']:
+        if len(key_data['used_ips']) >= key_data['limit']:
+            return jsonify({'success': False, 'message': 'LIMIT ATINGIDO (MAX IPs)'}), 401
+        key_data['used_ips'].append(client_ip)
 
     registered_ips[client_ip] = key
-    key_data['used_ips'].append(client_ip)
 
+    # --- ВЫДАЧА ДОСТУПА ---
     expiry_date = datetime.now() + timedelta(days=key_data['days'])
     key_expiry[client_ip] = expiry_date
     session['unlocked'] = True
